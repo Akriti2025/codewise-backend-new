@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeWise API Tester</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .container {
+            max-width: 800px;
+        }
+        input, button, textarea {
+            border-radius: 0.5rem;
+        }
+        button {
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+        }
+        button:hover {
+            transform: translateY(-1px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .response-box {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            min-height: 100px;
+            overflow-y: auto;
+            background-color: #f8fafc;
+        }
+    </style>
+</head>
+<body class="p-4">
+    <div class="container mx-auto p-6 bg-white shadow-xl rounded-lg mt-10">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-8 rounded-md p-2 bg-indigo-50">CodeWise API Tester</h1>
+
+        <!-- Backend Status Indicator -->
+        <div id="backendStatus" class="mb-6 text-center py-2 px-4 rounded-lg text-sm font-medium">
+            Checking backend status...
+        </div>
+
+        <!-- Login Section -->
+        <div class="mb-8 p-6 border border-indigo-200 rounded-lg bg-indigo-50 shadow-sm">
+            <h2 class="text-2xl font-semibold text-indigo-700 mb-4">1. Login to get JWT Token</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="username" class="block text-gray-700 text-sm font-bold mb-2">Username:</label>
+                    <input type="text" id="username" value="finaluser_iota" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="password" class="block text-gray-700 text-sm font-bold mb-2">Password:</label>
+                    <input type="password" id="password" value="finalpass_iota" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-indigo-500">
+                </div>
+            </div>
+            <button id="loginBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg w-full focus:outline-none focus:shadow-outline">
+                Login
+            </button>
+            <div class="mt-4">
+                <label for="jwtToken" class="block text-gray-700 text-sm font-bold mb-2">Generated JWT (copy this for manual use if needed):</label>
+                <textarea id="jwtToken" rows="3" readonly class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 resize-none response-box"></textarea>
+            </div>
+            <div id="loginMessage" class="mt-2 text-sm"></div>
+        </div>
+
+        <!-- Practice Questions Section -->
+        <div class="p-6 border border-green-200 rounded-lg bg-green-50 shadow-sm">
+            <h2 class="text-2xl font-semibold text-green-700 mb-4">2. Generate Practice Questions</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="topic" class="block text-gray-700 text-sm font-bold mb-2">Topic:</label>
+                    <input type="text" id="topic" value="Java" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-green-500">
+                </div>
+                <div>
+                    <label for="count" class="block text-gray-700 text-sm font-bold mb-2">Count:</label>
+                    <input type="number" id="count" value="3" min="1" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-green-500">
+                </div>
+            </div>
+            <button id="generateQuestionsBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg w-full focus:outline-none focus:shadow-outline">
+                Generate Questions
+            </button>
+            <div class="mt-4">
+                <label for="questionsResponse" class="block text-gray-700 text-sm font-bold mb-2">AI Response:</label>
+                <textarea id="questionsResponse" rows="10" readonly class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 bg-gray-100 resize-none response-box"></textarea>
+            </div>
+            <div id="questionsMessage" class="mt-2 text-sm"></div>
+        </div>
+    </div>
+
+    <script>
+        let jwtToken = ''; // This will store our JWT after login
+        const BASE_URL = 'http://localhost:8080/api'; // NOTE: Port is 8080 as per latest application.properties
+
+        // Helper function to update messages
+        function updateMessage(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `mt-2 text-sm ${
+                type === 'success' ? 'text-green-600' :
+                type === 'error' ? 'text-red-600' :
+                'text-gray-600'
+            }`;
+        }
+
+        // Check backend status on load
+        async function checkBackendStatus() {
+            const statusElement = document.getElementById('backendStatus');
+            try {
+                const response = await fetch(`${BASE_URL}/`, { method: 'GET' });
+                if (response.ok) {
+                    statusElement.textContent = 'Backend is running!';
+                    statusElement.className = 'mb-6 text-center py-2 px-4 rounded-lg text-green-700 bg-green-100 text-sm font-medium';
+                } else {
+                    statusElement.textContent = `Backend responded with status: ${response.status}. Please check your server.`;
+                    statusElement.className = 'mb-6 text-center py-2 px-4 rounded-lg text-red-700 bg-red-100 text-sm font-medium';
+                }
+            } catch (error) {
+                statusElement.textContent = `Backend is not reachable at ${BASE_URL}. Please ensure your Spring Boot app is running.`;
+                statusElement.className = 'mb-6 text-center py-2 px-4 rounded-lg text-red-700 bg-red-100 text-sm font-medium';
+                console.error("Backend check failed:", error);
+            }
+        }
+
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const loginMessage = document.getElementById('loginMessage');
+            const jwtTokenArea = document.getElementById('jwtToken');
+
+            updateMessage('loginMessage', 'Logging in...', 'info');
+            jwtTokenArea.value = ''; // Clear previous token
+
+            try {
+                const response = await fetch(`${BASE_URL}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password }),
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    jwtToken = data.token;
+                    jwtTokenArea.value = jwtToken;
+                    updateMessage('loginMessage', 'Login successful! JWT token obtained.', 'success');
+                } else {
+                    const errorText = await response.text();
+                    updateMessage('loginMessage', `Login failed: ${response.status} - ${errorText || response.statusText}`, 'error');
+                    jwtToken = ''; // Clear token on failure
+                }
+            } catch (error) {
+                updateMessage('loginMessage', `Network error during login: ${error.message}`, 'error');
+                jwtToken = '';
+                console.error('Login error:', error);
+            }
+        });
+
+        document.getElementById('generateQuestionsBtn').addEventListener('click', async () => {
+            const topic = document.getElementById('topic').value;
+            const count = document.getElementById('count').value;
+            const questionsResponseArea = document.getElementById('questionsResponse');
+            const questionsMessage = document.getElementById('questionsMessage');
+
+            if (!jwtToken) {
+                updateMessage('questionsMessage', 'Please login first to get a JWT token.', 'error');
+                return;
+            }
+            if (!topic.trim()) {
+                updateMessage('questionsMessage', 'Please enter a topic.', 'error');
+                return;
+            }
+            if (isNaN(count) || count < 1) {
+                updateMessage('questionsMessage', 'Please enter a valid number for count (minimum 1).', 'error');
+                return;
+            }
+
+            updateMessage('questionsMessage', 'Generating questions...', 'info');
+            questionsResponseArea.value = ''; // Clear previous response
+
+            try {
+                const response = await fetch(`${BASE_URL}/ai/practice-questions?topic=${encodeURIComponent(topic)}&count=${count}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${jwtToken}`, // This is where the JWT is correctly added
+                        'Content-Type': 'application/json'
+                    },
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    questionsResponseArea.value = JSON.stringify(data, null, 2); // Pretty print JSON
+                    updateMessage('questionsMessage', 'Questions generated successfully!', 'success');
+                } else {
+                    const errorText = await response.text();
+                    updateMessage('questionsMessage', `Failed to generate questions: ${response.status} - ${errorText || response.statusText}`, 'error');
+                    questionsResponseArea.value = `Error: ${response.status}\n${errorText || response.statusText}`;
+                }
+            } catch (error) {
+                updateMessage('questionsMessage', `Network error during question generation: ${error.message}`, 'error');
+                questionsResponseArea.value = `Network error: ${error.message}`;
+                console.error('Generate questions error:', error);
+            }
+        });
+
+        // Initial backend status check
+        checkBackendStatus();
+    </script>
+</body>
+</html>
