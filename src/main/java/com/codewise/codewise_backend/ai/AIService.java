@@ -16,6 +16,7 @@ import com.codewise.codewise_backend.ConversationRepository;
 import com.codewise.codewise_backend.user.User;
 import com.codewise.codewise_backend.user.UserService;
 
+import java.time.LocalDateTime; // Required for Feedback entity's timestamp
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,6 +31,7 @@ public class AIService {
     private final RestTemplate restTemplate;
     private final ConversationRepository conversationRepository;
     private final UserService userService;
+    private final FeedbackRepository feedbackRepository; // NEW: Injected FeedbackRepository
 
     @Value("${gemini.api.key}")
     private String geminiApiKey;
@@ -37,17 +39,22 @@ public class AIService {
     @Value("${gemini.api.url}")
     private String geminiApiUrl;
 
-    public AIService(RestTemplate restTemplate, ConversationRepository conversationRepository, UserService userService) {
+    // Modified constructor to include FeedbackRepository
+    public AIService(RestTemplate restTemplate,
+                     ConversationRepository conversationRepository,
+                     UserService userService,
+                     FeedbackRepository feedbackRepository) { // NEW: Add to constructor
         this.restTemplate = restTemplate;
         this.conversationRepository = conversationRepository;
         this.userService = userService;
+        this.feedbackRepository = feedbackRepository; // NEW: Assign
     }
 
     // Method to get an AI response for a question, now with chat history context and conversation saving
     public String getAIResponse(AIRequest aiRequest) {
         // Get the currently authenticated user from Spring Security context
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        
+
         // Ensure authentication exists and principal is UserDetails
         if (authentication == null || !(authentication.getPrincipal() instanceof UserDetails)) {
             System.err.println("AIService: No authenticated UserDetails found for conversation saving.");
@@ -56,7 +63,7 @@ public class AIService {
 
         // Get the username directly from UserDetails. This makes it effectively final.
         final String currentUsername = ((UserDetails) authentication.getPrincipal()).getUsername();
-        
+
         // Fetch the User entity from the database using the username
         User currentUser = userService.findByUsername(currentUsername)
                                      .orElseThrow(() -> new RuntimeException("User not found in database: " + currentUsername));
@@ -221,9 +228,9 @@ public class AIService {
                                                             // Parse the raw response into a list of questions
                                                             // Splitting by newline and filtering empty lines
                                                             questions = Arrays.stream(rawResponse.split("\n"))
-                                                                        .map(String::trim)
-                                                                        .filter(line -> !line.isEmpty() && (line.matches("^\\d+\\..*") || line.matches("^-.*"))) // Filter numbered or dashed lists
-                                                                        .collect(Collectors.toList());
+                                                                            .map(String::trim)
+                                                                            .filter(line -> !line.isEmpty() && (line.matches("^\\d+\\..*") || line.matches("^-.*"))) // Filter numbered or dashed lists
+                                                                            .collect(Collectors.toList());
                                                         }
                                                     }
                                                 }
@@ -251,7 +258,7 @@ public class AIService {
     public List<ConversationHistoryResponse> getConversationHistory() {
         // Get the currently authenticated user from Spring Security context
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        
+
         // This is the correct way to declare and initialize currentUsername to ensure it's effectively final.
         // It gets its value once and is not reassigned within the method.
         final String currentUsername;
@@ -278,5 +285,44 @@ public class AIService {
                                     conv.getTimestamp()
                             ))
                             .collect(Collectors.toList());
+    }
+
+    /**
+     * NEW METHOD: Saves feedback provided by the user.
+     * This method is added to resolve the "cannot find symbol" error for saveFeedback.
+     *
+     * @param feedbackRequest The request object containing feedback details.
+     */
+    public void saveFeedback(FeedbackRequest feedbackRequest) {
+        // Get the currently authenticated user from Spring Security context
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetails)) {
+            System.err.println("AIService: No authenticated UserDetails found for saving feedback. Cannot save feedback without a user.");
+            throw new RuntimeException("Authentication required to save feedback.");
+        }
+
+        final String currentUsername = ((UserDetails) authentication.getPrincipal()).getUsername();
+        User currentUser = userService.findByUsername(currentUsername)
+                                     .orElseThrow(() -> new RuntimeException("User not found in database for feedback: " + currentUsername));
+
+        try {
+            // Create a new Feedback entity from the FeedbackRequest
+            // IMPORTANT: This assumes FeedbackRequest has getFeedbackText() and getRating() methods.
+            // Adjust if your FeedbackRequest DTO has different field names.
+            Feedback feedback = new Feedback(currentUser, feedbackRequest.getFeedbackText(), feedbackRequest.getRating());
+
+            // If you want to link feedback to a specific conversation, and Feedback entity has a 'conversation' field:
+            // if (feedbackRequest.getConversationId() != null) {
+            //     conversationRepository.findById(feedbackRequest.getConversationId()).ifPresent(feedback::setConversation);
+            // }
+
+            feedbackRepository.save(feedback);
+            System.out.println("Feedback saved successfully for user: " + currentUser.getUsername());
+        } catch (Exception e) {
+            System.err.println("Error saving feedback for user '" + currentUser.getUsername() + "': " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to save feedback.", e);
+        }
     }
 }
